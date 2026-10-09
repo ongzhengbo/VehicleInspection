@@ -1,0 +1,646 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Vehicle Log</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* Layout: one phone screen. Pickers on top, scrolling list in the middle, numpad docked at the bottom, message sheet over everything. */
+  :root{
+    --bg:#f3f2ec; --card:#ffffff; --fg:#1d1c18; --muted:#6a675c; --line:#e2e0d6;
+    --accent:#f0b400; --accent-ink:#2b2000; --accent-soft:#fff2c4;
+    --ok:#23803f; --ok-soft:#e0f2e5; --bad:#c42f26; --bad-bg:#fbe8e5; --on-bad:#ffffff;
+    --key:#ffffff; --key-press:#e9e7dc; --seg:#e5e3d9; --seg-on:#ffffff; --ghost:#c6c3b6;
+    --font-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0e0e0c; --card:#1a1916; --fg:#f1efe6; --muted:#9d998c; --line:#2c2a25;
+      --accent:#f5c211; --accent-ink:#241a00; --accent-soft:#3a3000;
+      --ok:#4cc16e; --ok-soft:#14301c; --bad:#ff6b60; --bad-bg:#321815; --on-bad:#2a0a07;
+      --key:#23221d; --key-press:#34322b; --seg:#1f1e1a; --seg-on:#3a382f; --ghost:#4a473e;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e0e0c; --card:#1a1916; --fg:#f1efe6; --muted:#9d998c; --line:#2c2a25;
+    --accent:#f5c211; --accent-ink:#241a00; --accent-soft:#3a3000;
+    --ok:#4cc16e; --ok-soft:#14301c; --bad:#ff6b60; --bad-bg:#321815; --on-bad:#2a0a07;
+    --key:#23221d; --key-press:#34322b; --seg:#1f1e1a; --seg-on:#3a382f; --ghost:#4a473e;
+    color-scheme:dark;
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;padding-block:8px;padding-inline:16px;background:var(--bg);color:var(--fg);
+    font:15px/1.35 var(--font-ui);-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+  button{font-family:inherit;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .app{height:100%;min-height:0;display:flex;flex-direction:column;gap:8px}
+
+  /* Pickers */
+  .top{display:flex;flex-direction:column;gap:6px}
+  .row1{display:flex;gap:8px;align-items:stretch}
+  .seg{display:flex;gap:2px;padding:2px;background:var(--seg);border-radius:11px;min-width:0}
+  .seg button{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;
+    border:0;background:transparent;color:var(--fg);border-radius:9px;padding:10px 4px;
+    font-size:13px;font-weight:600;line-height:1;white-space:nowrap}
+  .seg button[aria-pressed="true"]{background:var(--seg-on);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+  .seg .n{font:600 11px var(--font-mono);color:var(--muted)}
+  .seg.mode{flex:1}
+  .seg.mode button{font-size:15px;font-weight:700;padding-block:11px}
+  .date{position:relative;display:flex;align-items:center;padding:0 12px;border-radius:11px;background:var(--seg);
+    font:600 13px var(--font-mono);white-space:nowrap}
+  .date input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;cursor:pointer}
+
+  /* List */
+  .listwrap{flex:1;min-height:0;display:flex;flex-direction:column}
+  .listhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 2px}
+  .listhead h2{margin:0;min-width:0;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .msgbtn{display:flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:8px 14px;
+    background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:800}
+  .msgbtn span{font:700 12px var(--font-mono)}
+  .list{flex:1;min-height:0;overflow-y:auto;margin:0;padding:0;list-style:none;background:var(--card);
+    border:1px solid var(--line);border-radius:14px}
+  .list li{border-bottom:1px solid var(--line)}
+  .list li:last-child{border-bottom:0}
+  .row{width:100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 9px;
+    padding:11px 14px;border:0;background:transparent;color:var(--fg);text-align:left}
+  .row.editing{background:var(--accent-soft)}
+  .pt{font:700 18px var(--font-mono);letter-spacing:.02em}
+  .pt small{margin-left:5px;font-size:12px;font-weight:500;color:var(--muted)}
+  .st{font-size:19px;line-height:1}
+  .pill{padding:3px 9px;border-radius:999px;background:var(--bad-bg);color:var(--bad);font:700 11px var(--font-ui);letter-spacing:.05em}
+  .it{min-width:0;color:var(--bad);font:700 13px/1.3 var(--font-mono);text-transform:uppercase;overflow-wrap:anywhere}
+  .flash{animation:flash 900ms ease-out}
+  @keyframes flash{from{background:var(--accent-soft)}to{background:transparent}}
+  .empty{padding:22px 18px;text-align:center;color:var(--muted)}
+  .empty p{margin:0 0 6px}
+  .empty .ghost{font-size:13px;color:var(--muted);opacity:.85}
+  .empty .mono{font:500 13px var(--font-mono)}
+
+  /* Dock */
+  .dock{display:flex;flex-direction:column;gap:8px;padding-bottom:4px}
+  .editbar{display:flex;align-items:center;gap:14px;padding:0 2px;font-size:13px;font-weight:700;color:var(--muted)}
+  .editbar .sp{flex:1}
+  .lnk{border:0;background:transparent;color:var(--fg);font-size:14px;font-weight:700;padding:6px 2px}
+  .lnk.bad{color:var(--bad)}
+  .entry{display:flex;gap:8px;align-items:stretch}
+  .plate{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;padding:8px 14px;background:var(--card);
+    border:1.5px solid var(--line);border-radius:14px;font-family:var(--font-mono);overflow:hidden}
+  .plate .d{font-size:28px;font-weight:700;letter-spacing:.05em;line-height:1.15}
+  .plate .ph{color:var(--ghost)}
+  .plate .sfx{font-size:15px;font-weight:500;color:var(--muted)}
+  .plate .vt{align-self:center;padding:3px 9px;border-radius:999px;background:var(--bad);color:var(--on-bad);font:800 12px var(--font-ui);letter-spacing:.05em}
+  .plate .dupn{margin-left:auto;font:700 11px var(--font-ui);color:var(--bad);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+  .plate.dup{border-color:var(--bad)}
+  .plate.err{border-color:var(--bad)}
+  .status{display:flex;gap:8px}
+  .status button,.vor{width:54px;border:1.5px solid var(--line);border-radius:14px;background:var(--card);color:var(--fg)}
+  .status button{font-size:24px;line-height:1;opacity:.5}
+  .status button[aria-pressed="true"]{opacity:1}
+  .status button[data-st="ok"][aria-pressed="true"]{background:var(--ok-soft);border-color:var(--ok)}
+  .status button[data-st="bad"][aria-pressed="true"]{background:var(--bad-bg);border-color:var(--bad)}
+  .vor{width:64px;font-size:13px;font-weight:800;letter-spacing:.05em;color:var(--muted)}
+  .vor[aria-pressed="true"]{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
+
+  .issues{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
+  .issues::-webkit-scrollbar{display:none}
+  .chip{flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:9px 13px;
+    background:var(--card);color:var(--fg);font-size:12px;font-weight:700;letter-spacing:.02em}
+  .chip.vor{letter-spacing:.06em}
+  .chip.vor[aria-pressed="true"]{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
+  .chip.issue{background:var(--bad-bg);border-color:transparent;color:var(--bad)}
+  .chip.add{border-style:dashed;color:var(--muted)}
+
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .key{height:clamp(40px,7vh,52px);display:flex;align-items:center;justify-content:center;border:0;border-radius:13px;
+    background:var(--key);color:var(--fg);font:600 24px var(--font-mono);box-shadow:0 1px 0 var(--line)}
+  .key:active{background:var(--key-press)}
+  .key.enter{background:var(--accent);color:var(--accent-ink);font:800 15px var(--font-ui);letter-spacing:.06em;text-transform:uppercase}
+
+  .ipane{display:flex;flex-direction:column;gap:8px}
+  .irow{display:flex;gap:8px}
+  .irow input{flex:1;min-width:0;height:46px;padding:0 14px;border:1.5px solid var(--line);border-radius:13px;
+    background:var(--card);color:var(--fg);font:600 16px var(--font-ui);text-transform:uppercase}
+  .irow .go{height:46px;padding:0 20px;border:0;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:15px;font-weight:800}
+  .sugg{display:flex;flex-wrap:wrap;gap:6px;max-height:104px;overflow-y:auto}
+  .done{height:46px;border:1.5px solid var(--line);border-radius:13px;background:var(--card);color:var(--fg);font-size:15px;font-weight:700}
+  .prow{display:flex;gap:8px}
+  .prow .done{flex:1}
+  .done.go2{background:var(--accent);border-color:transparent;color:var(--accent-ink);font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+
+  /* Message sheet */
+  .sheet{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;gap:12px;background:var(--bg);
+    padding:calc(env(safe-area-inset-top,0px) + 8px) 16px calc(env(safe-area-inset-bottom,0px) + 12px)}
+  .shead{display:flex;gap:10px;align-items:center}
+  .back{flex:none;border:0;background:transparent;color:var(--fg);font-size:15px;font-weight:700;padding:10px 4px}
+  .bubble{flex:1;min-height:0;overflow:auto;margin:0;padding:14px 16px;background:var(--card);border:1px solid var(--line);
+    border-radius:18px;font:500 14px/1.6 var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+  .sfoot{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+  .copy{height:54px;border:0;border-radius:15px;background:var(--accent);color:var(--accent-ink);font-size:17px;font-weight:800}
+  .copy:disabled{opacity:.4}
+  .clear{align-self:center;color:var(--muted)}
+  .clear.armed{color:var(--bad)}
+  .minor{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  #impSheet{z-index:11}
+  .ititle{font-size:17px}
+  .impta{flex:1;min-height:0;width:100%;resize:none;padding:14px 16px;border:1.5px solid var(--line);border-radius:18px;
+    background:var(--card);color:var(--fg);font:500 16px/1.5 var(--font-mono)}
+  .impsum{margin:0;color:var(--muted);font-size:13px;font-weight:600;line-height:1.5;white-space:pre-line}
+
+  .toast{position:fixed;z-index:20;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);
+    max-width:calc(100% - 32px);padding:9px 16px;border-radius:999px;background:var(--fg);color:var(--bg);
+    font-size:13px;font-weight:700;text-align:center;pointer-events:none}
+
+  @media (prefers-reduced-motion: reduce){.flash{animation:none}}
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="row1">
+      <div class="seg mode" role="group" aria-label="Report type">
+        <button type="button" data-mode="loc">Locations</button>
+        <button type="button" data-mode="wmd">WMD</button>
+      </div>
+      <label class="date">
+        <span id="dateText"></span>
+        <input type="date" id="dateInput" aria-label="Report date">
+      </label>
+    </div>
+    <div class="seg" id="locSeg" role="group" aria-label="Location"></div>
+    <div class="seg" id="typeSeg" role="group" aria-label="Vehicle type"></div>
+  </header>
+
+  <section class="listwrap">
+    <div class="listhead">
+      <h2 id="listTitle"></h2>
+      <button type="button" class="msgbtn" data-act="msg-open">Message <span id="totalN"></span></button>
+    </div>
+    <ol class="list" id="list"></ol>
+  </section>
+
+  <section class="dock" aria-label="Entry">
+    <div class="editbar" id="editBar" hidden>
+      <span>Editing entry</span><span class="sp"></span>
+      <button type="button" class="lnk bad" data-act="delete">Delete</button>
+      <button type="button" class="lnk" data-act="cancel">Cancel</button>
+    </div>
+    <div class="entry">
+      <div class="plate" id="plate" aria-live="polite"></div>
+      <div class="status" id="statusBtns">
+        <button type="button" data-st="ok" aria-label="Pass">✅</button>
+        <button type="button" data-st="bad" aria-label="Fault">❌</button>
+      </div>
+      <button type="button" class="vor" id="vorBtn" data-act="vor" aria-pressed="false">VOR</button>
+    </div>
+    <div class="issues" id="issuesRow" hidden></div>
+    <div class="pad" id="pad"></div>
+    <div class="ipane" id="issuePane" hidden>
+      <div class="irow">
+        <input type="text" id="issueInput" placeholder="Type the issue, e.g. MISSING FE" autocapitalize="characters" autocomplete="off" enterkeyhint="done" aria-label="Issue">
+        <button type="button" class="go" data-act="issue-add">Add</button>
+      </div>
+      <div class="sugg" id="sugg"></div>
+      <div class="prow">
+        <button type="button" class="done" data-act="issue-done">Keypad</button>
+        <button type="button" class="done go2" data-act="issue-enter" id="issueEnter">Enter</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-label="Telegram message">
+  <div class="shead">
+    <button type="button" class="back" data-act="msg-close">‹ Back</button>
+    <div class="seg mode" role="group" aria-label="Report type">
+      <button type="button" data-mode="loc">Locations</button>
+      <button type="button" data-mode="wmd">WMD</button>
+    </div>
+  </div>
+  <pre class="bubble" id="bubble"></pre>
+  <div class="sfoot">
+    <button type="button" class="copy" id="copyBtn" data-act="copy">Export message</button>
+    <div class="minor">
+      <button type="button" class="lnk" data-act="imp-open">Import message</button>
+      <button type="button" class="lnk clear" id="clearBtn" data-act="clear">Clear list</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="impSheet" hidden role="dialog" aria-label="Import message">
+  <div class="shead">
+    <button type="button" class="back" data-act="imp-close">‹ Back</button>
+    <strong class="ititle">Import message</strong>
+  </div>
+  <textarea id="impText" class="impta" placeholder="Paste a message here, like the ones you send to Telegram" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+  <p class="impsum" id="impSum"></p>
+  <div class="sfoot">
+    <button type="button" class="copy" id="impReplace" data-act="imp-replace" disabled>Replace list</button>
+    <button type="button" class="done" id="impMerge" data-act="imp-merge" disabled>Add to current list</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(function(){
+  'use strict';
+  var LOCS=['BLK 26','BLK 18','MSVS'];
+  var LOC_LABEL={'BLK 26':'Blk 26','BLK 18':'Blk 18','MSVS':'MSVS'};
+  var TYPES=['5 TON','LUV','MB290','OUV'];
+  var DEFAULT_ISSUES=['MISSING FE','FE EXPIRED','AVI EXPIRED','DRIVER DOOR FAULTY','PASSENGER DOOR FAULTY','DRIVER DOOR LOCK JAMMED','CANOPY ROPE TORN','MISSING CANOPY ROPE','CANOPY ROOF TORN','MISSING SEAT BELT','SEAT BELT BROKEN','MISSING SEAT BELT BUCKLE'];
+  var KEY='vehicle-log-v1';
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+
+  var S={mode:'loc',loc:'BLK 18',type:'LUV',data:{loc:{},wmd:{}},mem:[]};
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(raw){var p=JSON.parse(raw);if(p&&p.data&&p.data.loc&&p.data.wmd){S=Object.assign(S,p);}}
+  }catch(e){}
+  if(S.mode!=='loc'&&S.mode!=='wmd')S.mode='loc';
+  if(LOCS.indexOf(S.loc)<0)S.loc='BLK 18';
+  if(TYPES.indexOf(S.type)<0)S.type='LUV';
+  if(!Array.isArray(S.mem))S.mem=[];
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+
+  var pad2=function(n){return String(n).padStart(2,'0')};
+  var date=(function(){var d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());})();
+  function fmtDateOf(mode,d){var a=d.split('-');return mode==='wmd'?a[2]+'/'+a[1]+'/'+a[0]:a[2]+'/'+a[1]+'/'+a[0].slice(2);}
+  function fmtDate(mode){return fmtDateOf(mode,date);}
+
+  function bucket(mode,loc,type,create){
+    var m=S.data[mode];
+    if(!m[loc]){if(!create)return [];m[loc]={};}
+    if(!m[loc][type]){if(!create)return [];m[loc][type]=[];}
+    return m[loc][type];
+  }
+  function countLoc(mode,loc){return TYPES.reduce(function(n,t){return n+bucket(mode,loc,t,false).length},0)}
+  function countAll(mode){return LOCS.reduce(function(n,l){return n+countLoc(mode,l)},0)}
+  var uid=function(){return Math.random().toString(36).slice(2,9)};
+
+  var cur,paneOpen=false,lastAdded=null,sheetOpen=false,clearArmed=false,clearTimer=null,toastTimer=null;
+  function resetCur(){cur={plate:'',st:'ok',vor:false,issues:[],editId:null};paneOpen=false;}
+  resetCur();
+
+  /* ---------- message text ---------- */
+  function rowLoc(e){return '• '+e.plate+'MID'+(e.vor?' (VOR)':'');}
+  function rowWmd(e){
+    if(e.st!=='bad')return e.plate+' MID ✅';
+    var parts=[];if(e.vor)parts.push('VOR');
+    (e.issues||[]).forEach(function(t){parts.push(t)});
+    return e.plate+' MID ❌'+(parts.length?' '+parts.join(' / '):'');
+  }
+  function buildMessage(mode){
+    var lines=[mode==='wmd'?'WMD':'Vehicle locations','('+fmtDate(mode)+')'];
+    var first=true;
+    LOCS.forEach(function(loc){
+      var types=TYPES.filter(function(t){return bucket(mode,loc,t,false).length});
+      if(!types.length)return;
+      if(!first)lines.push('');
+      first=false;
+      if(mode==='loc'){
+        lines.push(LOC_LABEL[loc]+':');
+        types.forEach(function(t){
+          lines.push(t);
+          bucket(mode,loc,t,false).forEach(function(e){lines.push(rowLoc(e))});
+        });
+      }else{
+        lines.push(LOC_LABEL[loc],'');
+        types.forEach(function(t,i){
+          if(i)lines.push('');
+          lines.push(t+':');
+          bucket(mode,loc,t,false).forEach(function(e){lines.push(rowWmd(e))});
+        });
+      }
+    });
+    return lines.join('\n');
+  }
+
+  /* ---------- import: reads back a message in either format ---------- */
+  /*PARSER_START*/
+  function parseMessage(text){
+    var lines=String(text||'').replace(/\r/g,'').split('\n');
+    var out={mode:null,date:null,data:{},count:0,skipped:0};
+    var loc=null,type=null,sawEmoji=false;
+    var BAD=/[❌✖✗❎]/,OK=/[✅✔☑]/,MARK=/[❌✖✗❎✅✔☑️]/g;
+    for(var i=0;i<lines.length;i++){
+      var raw=lines[i].trim();
+      if(!raw)continue;
+      var dm=!/mid/i.test(raw)&&/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(raw);
+      if(dm){var y=+dm[3];if(y<100)y+=2000;out.date=y+'-'+pad2(+dm[2])+'-'+pad2(+dm[1]);}
+      if(/^vehicle\s+locations?\b/i.test(raw)){out.mode='loc';continue;}
+      if(/^wmd\b/i.test(raw)){out.mode='wmd';continue;}
+      if(dm)continue;
+      var head=raw.replace(/^[•\-\*·]\s*/,'').replace(/\s*:\s*$/,'').trim();
+      var lm=/^(?:blk|block)\s*0?(\d+)$/i.exec(head);
+      if(lm){var nm='BLK '+lm[1];loc=LOCS.indexOf(nm)>-1?nm:null;type=null;continue;}
+      if(/^msvs$/i.test(head)){loc='MSVS';type=null;continue;}
+      var tt=head.replace(/\s+/g,' ').toUpperCase().replace(/^5TON$/,'5 TON');
+      if(TYPES.indexOf(tt)>-1){type=tt;continue;}
+      var m=/^[•\-\*·]?\s*(\d{3,6})\s*MID\b\s*(.*)$/i.exec(raw);
+      if(!m)continue;
+      if(!loc||!type){out.skipped++;continue;}
+      var rest=m[2].trim(),st='ok',vor=false,issues=[];
+      var bad=BAD.test(rest),ok=OK.test(rest);
+      if(bad||ok)sawEmoji=true;
+      if(bad){
+        st='bad';
+        rest.replace(MARK,'').replace(/^[\s\-–—:]+/,'').replace(/[()]/g,'').split(/[\/,+]/).forEach(function(p){
+          var t=p.trim().replace(/\s+/g,' ').toUpperCase();
+          if(!t)return;
+          if(t==='VOR')vor=true;else if(issues.indexOf(t)<0)issues.push(t);
+        });
+      }else if(!ok&&/\bVOR\b/i.test(rest)){vor=true;}
+      if(!out.data[loc])out.data[loc]={};
+      if(!out.data[loc][type])out.data[loc][type]=[];
+      var arr=out.data[loc][type],rec={id:uid(),plate:m[1],st:st,vor:vor,issues:issues};
+      var di=arr.findIndex(function(e){return e.plate===rec.plate});
+      if(di>-1)arr[di]=rec;else{arr.push(rec);out.count++;}
+    }
+    if(!out.mode)out.mode=sawEmoji?'wmd':'loc';
+    return out;
+  }
+  /*PARSER_END*/
+
+  var impParsed=null;
+  var modeName=function(m){return m==='wmd'?'WMD':'vehicle locations'};
+  function updateImport(){
+    var v=$('impText').value,p=v.trim()?parseMessage(v):null;
+    impParsed=p;
+    var sum=$('impSum'),ok=!!(p&&p.count);
+    if(!p){sum.textContent='Paste a Vehicle locations or WMD message here.';}
+    else if(!p.count){sum.textContent='No vehicles found. Lines should look like "36774 MID ❌ VOR / MISSING FE" or "• 20536MID".';}
+    else{
+      var places=[];
+      LOCS.forEach(function(l){
+        if(!p.data[l])return;
+        var ts=TYPES.filter(function(t){return p.data[l][t]}).map(function(t){return t+' '+p.data[l][t].length});
+        if(ts.length)places.push(LOC_LABEL[l]+': '+ts.join(', '));
+      });
+      sum.textContent=p.count+' vehicles for '+modeName(p.mode)+(p.date?', dated '+fmtDateOf(p.mode,p.date):'')+'\n'+places.join('\n')+(p.skipped?'\n'+p.skipped+' lines skipped (no location or type above them)':'');
+    }
+    $('impReplace').disabled=!ok;$('impMerge').disabled=!ok;
+    $('impReplace').textContent=ok?'Replace '+modeName(p.mode)+' list':'Replace list';
+    $('impMerge').textContent=ok?'Add to '+modeName(p.mode)+' list':'Add to current list';
+  }
+  function openImport(){$('impText').value='';updateImport();$('impSheet').hidden=false;$('impText').focus({preventScroll:true});}
+  function closeImport(){$('impSheet').hidden=true;}
+  function applyImport(replace){
+    var p=impParsed;if(!p||!p.count)return;
+    var mode=p.mode,added=0,updated=0;
+    if(replace){S.data[mode]={};if(p.date)date=p.date;}
+    Object.keys(p.data).forEach(function(l){
+      Object.keys(p.data[l]).forEach(function(t){
+        var b=bucket(mode,l,t,true);
+        p.data[l][t].forEach(function(r){
+          var i=b.findIndex(function(e){return e.plate===r.plate});
+          if(i>-1){r.id=b[i].id;b[i]=r;updated++;}else{b.push(r);added++;}
+        });
+      });
+    });
+    S.mode=mode;
+    var fl=LOCS.filter(function(l){return countLoc(mode,l)})[0];
+    if(fl){S.loc=fl;S.type=TYPES.filter(function(t){return bucket(mode,fl,t,false).length})[0]||S.type;}
+    resetCur();save();closeImport();renderAll();
+    toast('Imported '+(added+updated)+' vehicles'+(updated&&!replace?' ('+updated+' updated)':''));
+  }
+
+  /* ---------- render ---------- */
+  function renderTop(){
+    document.querySelectorAll('[data-mode]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.mode===S.mode))});
+    $('dateText').textContent=fmtDate(S.mode);
+    if($('dateInput').value!==date)$('dateInput').value=date;
+    $('locSeg').innerHTML=LOCS.map(function(l){
+      var n=countLoc(S.mode,l);
+      return '<button type="button" data-loc="'+esc(l)+'" aria-pressed="'+(l===S.loc)+'">'+esc(l)+(n?'<span class="n">'+n+'</span>':'')+'</button>';
+    }).join('');
+    $('typeSeg').innerHTML=TYPES.map(function(t){
+      var n=bucket(S.mode,S.loc,t,false).length;
+      return '<button type="button" data-type="'+esc(t)+'" aria-pressed="'+(t===S.type)+'">'+esc(t)+(n?'<span class="n">'+n+'</span>':'')+'</button>';
+    }).join('');
+  }
+  function renderList(){
+    var b=bucket(S.mode,S.loc,S.type,false);
+    $('listTitle').textContent=S.loc+' · '+S.type+' · '+b.length;
+    var tot=countAll(S.mode);
+    $('totalN').textContent=tot?String(tot):'';
+    var list=$('list');
+    if(!b.length){
+      list.innerHTML='<li class="empty"><p>No '+esc(S.type)+' logged for '+esc(S.loc)+' yet.</p>'+
+        '<p class="ghost">Type a plate on the keypad, then press Enter.</p>'+
+        '<p class="ghost mono">Example: '+(S.mode==='wmd'?'36774 MID ❌ VOR / MISSING FE':'• 20535MID (VOR)')+'</p></li>';
+      return;
+    }
+    list.innerHTML=b.map(function(e){
+      var right=S.mode==='wmd'?'<span class="st">'+(e.st==='bad'?'❌':'✅')+'</span>':(e.vor?'<span class="pill">VOR</span>':'');
+      var issue='';
+      if(S.mode==='wmd'&&e.st==='bad'){issue=[e.vor?'VOR':null].concat(e.issues||[]).filter(Boolean).join(' / ');}
+      return '<li><button type="button" class="row'+(e.id===cur.editId?' editing':'')+(e.id===lastAdded?' flash':'')+'" data-edit="'+esc(e.id)+'">'+
+        '<span class="pt">'+esc(e.plate)+'<small>MID</small></span>'+right+(issue?'<span class="it">'+esc(issue)+'</span>':'')+'</button></li>';
+    }).join('');
+    if(lastAdded){list.scrollTop=list.scrollHeight;lastAdded=null;}
+  }
+  function renderDock(){
+    var wmd=S.mode==='wmd';
+    var ph=Math.max(0,5-cur.plate.length);
+    var dup=cur.plate.length>=3&&bucket(S.mode,S.loc,S.type,false).some(function(e){return e.plate===cur.plate&&e.id!==cur.editId});
+    var pl=$('plate');
+    pl.className='plate'+(dup?' dup':'');
+    pl.innerHTML='<span class="d">'+esc(cur.plate)+'<span class="ph">'+'•'.repeat(ph)+'</span></span><span class="sfx">MID</span>'+(cur.vor&&(!wmd||cur.st==='bad')?'<span class="vt">VOR</span>':'')+(dup?'<span class="dupn">Already in list</span>':'');
+    $('statusBtns').hidden=!wmd;
+    document.querySelectorAll('[data-st]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.st===cur.st))});
+    var vb=$('vorBtn');vb.hidden=wmd;vb.setAttribute('aria-pressed',String(cur.vor));
+    var showIssues=wmd&&cur.st==='bad';
+    var ir=$('issuesRow');ir.hidden=!showIssues;
+    if(showIssues){
+      ir.innerHTML='<button type="button" class="chip vor" data-act="vor" aria-pressed="'+cur.vor+'">VOR</button>'+
+        cur.issues.map(function(t,i){return '<button type="button" class="chip issue" data-rm="'+i+'">'+esc(t)+' <span aria-hidden="true">×</span></button>'}).join('')+
+        '<button type="button" class="chip add" data-act="addissue">+ Add issue</button>';
+    }
+    $('editBar').hidden=!cur.editId;
+    var pane=paneOpen&&showIssues;
+    $('pad').hidden=pane;
+    $('issuePane').hidden=!pane;
+    var ek=$('enterKey');if(ek)ek.textContent=cur.editId?'Save':'Enter';
+    var ie=$('issueEnter');if(ie)ie.textContent=cur.editId?'Save':'Enter';
+    if(pane)renderSugg();
+  }
+  function renderSugg(){
+    var all=DEFAULT_ISSUES.concat(S.mem.filter(function(m){return DEFAULT_ISSUES.indexOf(m)<0}));
+    $('sugg').innerHTML=all.filter(function(t){return cur.issues.indexOf(t)<0}).map(function(t){
+      return '<button type="button" class="chip" data-sg="'+esc(t)+'">'+esc(t)+'</button>';
+    }).join('');
+  }
+  function renderSheet(){
+    var n=countAll(S.mode);
+    $('bubble').textContent=n?buildMessage(S.mode):'Nothing logged yet for '+(S.mode==='wmd'?'WMD':'vehicle locations')+'.';
+    $('copyBtn').disabled=!n;
+    $('copyBtn').textContent='Export message';
+    var cb=$('clearBtn');
+    cb.className='lnk clear'+(clearArmed?' armed':'');
+    cb.textContent=clearArmed?'Tap again to clear everything':'Clear '+(S.mode==='wmd'?'WMD':'locations')+' list';
+    cb.hidden=!n;
+  }
+  function renderAll(){renderTop();renderList();renderDock();if(sheetOpen)renderSheet();}
+
+  /* ---------- actions ---------- */
+  function toast(m){
+    var el=$('toast');el.textContent=m;el.hidden=false;
+    clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.hidden=true},1800);
+  }
+  function flashErr(){
+    var pl=$('plate');pl.classList.add('err');setTimeout(function(){pl.classList.remove('err')},450);
+  }
+  function press(k){
+    if(k==='enter'){commit();return;}
+    if(k==='bs'){cur.plate=cur.plate.slice(0,-1);}
+    else if(cur.plate.length<6){cur.plate+=k;}
+    renderDock();
+  }
+  function commit(){
+    if(!cur.plate){flashErr();return;}
+    var b=bucket(S.mode,S.loc,S.type,true);
+    var dup=b.filter(function(e){return e.plate===cur.plate&&e.id!==cur.editId})[0];
+    if(dup){toast(cur.plate+' is already in this list');startEdit(dup.id);return;}
+    var wmd=S.mode==='wmd';
+    var rec={plate:cur.plate,st:wmd?cur.st:'ok',vor:wmd?(cur.st==='bad'&&cur.vor):cur.vor,issues:(wmd&&cur.st==='bad')?cur.issues.slice():[]};
+    if(cur.editId){
+      var i=b.findIndex(function(e){return e.id===cur.editId});
+      if(i>-1){rec.id=cur.editId;b[i]=rec;}
+      toast('Saved '+rec.plate);
+    }else{
+      rec.id=uid();b.push(rec);lastAdded=rec.id;
+      toast('Added '+rec.plate);
+    }
+    resetCur();save();renderAll();
+  }
+  function startEdit(id){
+    if(cur.editId===id){resetCur();renderList();renderDock();return;}
+    var e=bucket(S.mode,S.loc,S.type,false).filter(function(x){return x.id===id})[0];
+    if(!e)return;
+    cur={plate:e.plate,st:e.st==='bad'?'bad':'ok',vor:!!e.vor,issues:(e.issues||[]).slice(),editId:id};
+    paneOpen=false;renderList();renderDock();
+  }
+  /* Accepts "MISSING FE" or a whole line like "VOR / FE EXPIRED / AVI EXPIRED"; VOR sets the VOR flag. */
+  function addIssue(text){
+    var added=false;
+    String(text||'').split(/[\/,\n]/).forEach(function(p){
+      var t=p.trim().replace(/\s+/g,' ').toUpperCase();
+      if(!t)return;
+      added=true;
+      if(t==='VOR'){cur.vor=true;return;}
+      if(cur.issues.indexOf(t)<0)cur.issues.push(t);
+      if(DEFAULT_ISSUES.indexOf(t)<0&&S.mem.indexOf(t)<0){S.mem.unshift(t);S.mem=S.mem.slice(0,20);}
+    });
+    if(added)save();
+    return added;
+  }
+  function setMode(m){if(S.mode===m)return;S.mode=m;if(cur.editId)resetCur();save();renderAll();}
+  function setPlace(k,v){
+    if(S[k]===v)return;S[k]=v;
+    if(cur.editId)resetCur();
+    save();renderAll();
+  }
+  function openSheet(){sheetOpen=true;clearArmed=false;$('sheet').hidden=false;renderSheet();$('copyBtn').focus({preventScroll:true});}
+  function closeSheet(){sheetOpen=false;clearArmed=false;clearTimeout(clearTimer);$('sheet').hidden=true;$('impSheet').hidden=true;renderAll();}
+
+  function copyMsg(){
+    var txt=buildMessage(S.mode),btn=$('copyBtn');
+    function done(){btn.textContent='Copied';toast('Copied. Paste it into Telegram or Notes.');setTimeout(function(){if(sheetOpen)btn.textContent='Export message'},2200);}
+    function legacy(){
+      var ok=false;
+      try{
+        var ta=document.createElement('textarea');
+        ta.value=txt;ta.setAttribute('readonly','');
+        ta.style.cssText='position:fixed;top:0;left:0;opacity:0';
+        document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,txt.length);
+        ok=document.execCommand('copy');ta.remove();
+      }catch(e){}
+      if(ok){done();return;}
+      try{
+        var r=document.createRange();r.selectNodeContents($('bubble'));
+        var s=window.getSelection();s.removeAllRanges();s.addRange(r);
+      }catch(e){}
+      toast('Press and hold the text, then tap Copy');
+    }
+    try{
+      navigator.clipboard.writeText(txt).then(done,legacy);
+    }catch(e){legacy();}
+  }
+  function clearList(){
+    if(!clearArmed){
+      clearArmed=true;renderSheet();
+      clearTimeout(clearTimer);clearTimer=setTimeout(function(){clearArmed=false;if(sheetOpen)renderSheet();},4000);
+      return;
+    }
+    clearArmed=false;clearTimeout(clearTimer);
+    S.data[S.mode]={};resetCur();save();renderAll();toast('List cleared');
+  }
+
+  /* ---------- wiring ---------- */
+  $('pad').innerHTML=['1','2','3','4','5','6','7','8','9','bs','0','enter'].map(function(k){
+    if(k==='bs')return '<button type="button" class="key" data-k="bs" aria-label="Delete last digit"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 5H9l-6 7 6 7h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="m12 9 5 6M17 9l-5 6"/></svg></button>';
+    if(k==='enter')return '<button type="button" class="key enter" data-k="enter" id="enterKey">Enter</button>';
+    return '<button type="button" class="key" data-k="'+k+'">'+k+'</button>';
+  }).join('');
+
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('button');if(!t)return;
+    var d=t.dataset;
+    if(d.k){press(d.k);return;}
+    if(d.mode){setMode(d.mode);return;}
+    if(d.loc){setPlace('loc',d.loc);return;}
+    if(d.type){setPlace('type',d.type);return;}
+    if(d.edit){startEdit(d.edit);return;}
+    if(d.st){cur.st=d.st;paneOpen=(cur.st==='bad');renderDock();return;}
+    if(d.rm!==undefined){cur.issues.splice(+d.rm,1);renderDock();return;}
+    if(d.sg){if(addIssue(d.sg))renderDock();return;}
+    switch(d.act){
+      case 'vor':cur.vor=!cur.vor;renderDock();break;
+      case 'addissue':paneOpen=true;renderDock();$('issueInput').value='';$('issueInput').focus();break;
+      case 'issue-add':
+        if(addIssue($('issueInput').value)){$('issueInput').value='';renderDock();$('issueInput').focus();}
+        break;
+      case 'issue-done':
+        if(addIssue($('issueInput').value))$('issueInput').value='';
+        paneOpen=false;renderDock();break;
+      case 'imp-open':openImport();break;
+      case 'imp-close':closeImport();break;
+      case 'imp-replace':applyImport(true);break;
+      case 'imp-merge':applyImport(false);break;
+      case 'issue-enter':
+        addIssue($('issueInput').value);$('issueInput').value='';
+        paneOpen=false;renderDock();commit();break;
+      case 'delete':{
+        var b=bucket(S.mode,S.loc,S.type,true);
+        var i=b.findIndex(function(x){return x.id===cur.editId});
+        if(i>-1)b.splice(i,1);
+        toast('Deleted');resetCur();save();renderAll();break;
+      }
+      case 'cancel':resetCur();renderList();renderDock();break;
+      case 'msg-open':openSheet();break;
+      case 'msg-close':closeSheet();break;
+      case 'copy':copyMsg();break;
+      case 'clear':clearList();break;
+    }
+  });
+  $('issueInput').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();if(addIssue(this.value)){this.value='';renderDock();this.focus();}}
+  });
+  $('impText').addEventListener('input',updateImport);
+  $('dateInput').addEventListener('change',function(){
+    if(this.value){date=this.value;renderAll();}
+  });
+  document.addEventListener('keydown',function(e){
+    if(sheetOpen||e.target!==document.body||e.metaKey||e.ctrlKey||e.altKey)return;
+    if(/^[0-9]$/.test(e.key)){press(e.key);}
+    else if(e.key==='Backspace'){e.preventDefault();press('bs');}
+    else if(e.key==='Enter'){commit();}
+  });
+
+  renderAll();
+})();
+</script>
+
+</body></html>
