@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sheets Export</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* Same palette as index.html. Paste box on top, summary + actions, then a preview table. */
+  :root{
+    --bg:#f3f2ec; --card:#ffffff; --fg:#1d1c18; --muted:#6a675c; --line:#e2e0d6;
+    --accent:#f0b400; --accent-ink:#2b2000; --accent-soft:#fff2c4;
+    --ok:#23803f; --bad:#c42f26; --bad-bg:#fbe8e5;
+    --font-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0e0e0c; --card:#1a1916; --fg:#f1efe6; --muted:#9d998c; --line:#2c2a25;
+      --accent:#f5c211; --accent-ink:#241a00; --accent-soft:#3a3000;
+      --ok:#4cc16e; --bad:#ff6b60; --bad-bg:#321815;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e0e0c; --card:#1a1916; --fg:#f1efe6; --muted:#9d998c; --line:#2c2a25;
+    --accent:#f5c211; --accent-ink:#241a00; --accent-soft:#3a3000;
+    --ok:#4cc16e; --bad:#ff6b60; --bad-bg:#321815;
+    color-scheme:dark;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;padding:calc(env(safe-area-inset-top,0px) + 8px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);
+    background:var(--bg);color:var(--fg);font:15px/1.4 var(--font-ui);-webkit-text-size-adjust:100%}
+  .app{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+  .head{display:flex;align-items:center;gap:10px}
+  .head h1{margin:0;font-size:17px}
+  .back{color:var(--fg);font-weight:700;text-decoration:none;padding:10px 4px}
+  textarea{width:100%;height:34vh;min-height:160px;resize:vertical;padding:14px 16px;border:1.5px solid var(--line);border-radius:18px;
+    background:var(--card);color:var(--fg);font:500 14px/1.5 var(--font-mono)}
+  textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .sum{margin:0;color:var(--muted);font-size:13px;font-weight:600}
+  .acts{display:flex;gap:8px}
+  .acts button{flex:1;height:50px;border-radius:15px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
+  .copy{border:0;background:var(--accent);color:var(--accent-ink)}
+  .acts button:disabled{opacity:.4;cursor:default}
+  .skip{padding:10px 14px;border-radius:13px;background:var(--bad-bg);color:var(--bad);font-size:13px}
+  .skip ul{margin:6px 0 0;padding-left:18px;font-family:var(--font-mono);overflow-wrap:anywhere}
+  .tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
+  th{position:sticky;top:0;background:var(--card);color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  tr:last-child td{border-bottom:0}
+  td.pl{font:700 13px var(--font-mono)}
+  td.is{white-space:normal;min-width:180px;color:var(--bad);font-weight:600}
+  .vor{color:var(--bad);font-weight:800}
+  .empty{padding:20px;text-align:center;color:var(--muted)}
+  .toast{position:fixed;z-index:20;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);
+    max-width:calc(100% - 32px);padding:9px 16px;border-radius:999px;background:var(--fg);color:var(--bg);
+    font-size:13px;font-weight:700;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="head">
+    <a class="back" href="index.html">‹ Back</a>
+    <h1>Export to Google Sheets</h1>
+  </div>
+  <textarea id="txt" placeholder="Paste one or more WMD or Vehicle locations messages from Telegram" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Messages"></textarea>
+  <p class="sum" id="sum"></p>
+  <div class="acts">
+    <button type="button" class="copy" id="csvBtn" disabled>Download CSV</button>
+  </div>
+  <div class="skip" id="skip" hidden></div>
+  <div class="tw"><table id="tbl"></table></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+  var pad2=function(n){return String(n).padStart(2,'0')};
+  var LOCS={'BLK 26':'Blk 26','BLK 18':'Blk 18','MSVS':'MSVS'};
+  var TYPES=['5 TON','LUV','MB290','OUV'];
+  var COLS=['Date','Location','Type','Vehicle No','Status','VOR','Issues','Reported by'];
+
+  /* Reads any number of pasted messages. A line like "terence:" starts a new sender;
+     Telegram's "[16/10/2026 08:12] terence:" and "terence, [16/10/2026 08:12]" forms work too. */
+  function parse(text){
+    var lines=String(text||'').replace(/\r/g,'').split('\n');
+    var rows=[],skipped=[];
+    var who='',date='',loc=null,type=null;
+    var BAD=/[❌✖✗❎]/,OK=/[✅✔☑]/,MARK=/[❌✖✗❎✅✔☑️]/g;
+    function split(s){
+      var out=[];
+      s.split(/[\/,+]/).forEach(function(p){
+        var t=p.trim().replace(/\s+/g,' ').toUpperCase();
+        if(t&&out.indexOf(t)<0)out.push(t);
+      });
+      return out;
+    }
+    lines.forEach(function(line){
+      var raw=line.trim();
+      if(!raw)return;
+      var tg=/^(.+?),\s*\[[^\]]*\]\s*$/.exec(raw);
+      if(tg){who=tg[1].trim();loc=type=null;return;}
+      raw=raw.replace(/^\[[^\]]*\]\s*/,'');
+      var m=/^[•\-\*·]?\s*(\d{3,6})\s*MID\b\s*(.*)$/i.exec(raw);
+      if(m){
+        if(!loc||!type){skipped.push(raw);return;}
+        var rest=m[2].trim(),st='',vor=false,issues=[];
+        if(BAD.test(rest)){
+          st='❌';
+          split(rest.replace(MARK,'').replace(/^[\s\-–—:]+/,'').replace(/[()]/g,'')).forEach(function(t){
+            if(t==='VOR')vor=true;else issues.push(t);
+          });
+        }else if(OK.test(rest)){
+          st='✅';
+        }else{
+          var vm=/^\(?\s*VOR\s*\)?(?=\s|-|$)/i.exec(rest);
+          if(vm){vor=true;rest=rest.slice(vm[0].length);}
+          issues=split(rest.replace(/^[\s\-–—:]+/,''));
+        }
+        rows.push({date:date,loc:LOCS[loc],type:type,plate:m[1],st:st,vor:vor?'VOR':'',issues:issues.join(' / '),who:who});
+        return;
+      }
+      var dm=/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(raw);
+      if(dm&&raw.replace(dm[0],'').replace(/[()\s]/g,'')===''){
+        var y=+dm[3];if(y<100)y+=2000;
+        date=pad2(+dm[1])+'/'+pad2(+dm[2])+'/'+y;return;
+      }
+      if(/^(wmd|vehicle\s+locations?)\b/i.test(raw)){loc=type=null;return;}
+      var head=raw.replace(/^[•\-\*·]\s*/,'').replace(/\s*:\s*$/,'').trim();
+      var lm=/^(?:blk|block)\s*0?(\d+)$/i.exec(head);
+      if(lm){loc=LOCS['BLK '+lm[1]]?'BLK '+lm[1]:null;type=null;if(!loc)skipped.push(raw);return;}
+      if(/^msvs$/i.test(head)){loc='MSVS';type=null;return;}
+      var tt=head.replace(/\s+/g,' ').toUpperCase().replace(/^5TON$/,'5 TON');
+      if(TYPES.indexOf(tt)>-1){type=tt;return;}
+      if(/:\s*$/.test(raw)&&head.length<=40){who=head;loc=type=null;return;}
+      skipped.push(raw);
+    });
+    return {rows:rows,skipped:skipped};
+  }
+
+  function cells(r){return [r.date,r.loc,r.type,r.plate,r.st,r.vor,r.issues,r.who];}
+
+  var cur={rows:[],skipped:[]};
+  function render(){
+    cur=parse($('txt').value);
+    var rows=cur.rows,n=rows.length;
+    var bad=rows.filter(function(r){return r.st==='❌'}).length;
+    var vor=rows.filter(function(r){return r.vor}).length;
+    $('sum').textContent=n?n+' vehicles · '+bad+' ❌ · '+vor+' VOR':($('txt').value.trim()?'No vehicles found.':'Paste messages above to get started.');
+    $('csvBtn').disabled=!n;
+    var sk=$('skip');
+    sk.hidden=!cur.skipped.length;
+    sk.innerHTML=cur.skipped.length?'<strong>'+cur.skipped.length+' line'+(cur.skipped.length>1?'s':'')+' not understood</strong><ul>'+
+      cur.skipped.map(function(s){return '<li>'+esc(s)+'</li>'}).join('')+'</ul>':'';
+    $('tbl').innerHTML=n?'<thead><tr>'+COLS.map(function(c){return '<th>'+c+'</th>'}).join('')+'</tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr><td>'+esc(r.date)+'</td><td>'+esc(r.loc)+'</td><td>'+esc(r.type)+'</td><td class="pl">'+esc(r.plate)+'</td><td>'+r.st+
+          '</td><td class="vor">'+r.vor+'</td><td class="is">'+esc(r.issues)+'</td><td>'+esc(r.who)+'</td></tr>';
+      }).join('')+'</tbody>':'<tbody><tr><td class="empty">Vehicles will appear here.</td></tr></tbody>';
+  }
+
+  function csv(){
+    return [COLS].concat(cur.rows.map(cells)).map(function(r){
+      return r.map(function(c){c=String(c);return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',');
+    }).join('\r\n');
+  }
+
+  function download(){
+    var d=(cur.rows[0]&&cur.rows[0].date||'').split('/').reverse().join('-')||'export';
+    var blob=new Blob(['﻿'+csv()],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='vehicles-'+d+'.csv';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+  }
+
+  $('txt').addEventListener('input',render);
+  $('csvBtn').addEventListener('click',download);
+  render();
+})();
+</script>
+</body>
+</html>
