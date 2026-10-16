@@ -103,6 +103,7 @@
   .vor{width:64px;font-size:13px;font-weight:800;letter-spacing:.05em;color:var(--muted)}
   .vor[aria-pressed="true"]{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
 
+  .nt{flex-basis:100%;color:var(--muted);font-size:13px;font-style:italic;overflow-wrap:anywhere}
   .issues{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
   .issues::-webkit-scrollbar{display:none}
   .chip{flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:9px 13px;
@@ -262,7 +263,17 @@
   if(LOCS.indexOf(S.loc)<0)S.loc='BLK 18';
   if(TYPES.indexOf(S.type)<0)S.type='LUV';
   if(!Array.isArray(S.mem))S.mem=[];
+  if(!Array.isArray(S.memLoc))S.memLoc=[];
   function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+  function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  /* Lists only hold one day: on a new day both lists start empty. Returns true if something was cleared. */
+  function dailyReset(){
+    var t=today();
+    if(S.day===t)return false;
+    var had=S.day!=null;
+    S.day=t;if(had)S.data={loc:{},wmd:{}};save();return had;
+  }
+  dailyReset();
 
   var pad2=function(n){return String(n).padStart(2,'0')};
   var date=(function(){var d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());})();
@@ -284,7 +295,7 @@
   resetCur();
 
   /* ---------- message text ---------- */
-  function rowLoc(e){return '• '+e.plate+'MID'+(e.vor?' (VOR)':'');}
+  function rowLoc(e){return '• '+e.plate+'MID'+(e.vor?' (VOR)':'')+((e.issues||[]).length?' - '+e.issues.join(' / '):'');}
   function rowWmd(e){
     if(e.st!=='bad')return e.plate+' MID ✅';
     var parts=[];if(e.vor)parts.push('VOR');
@@ -351,7 +362,14 @@
           if(!t)return;
           if(t==='VOR')vor=true;else if(issues.indexOf(t)<0)issues.push(t);
         });
-      }else if(!ok&&/\bVOR\b/i.test(rest)){vor=true;}
+      }else if(!ok){
+        var vm=/^\(?\s*VOR\s*\)?(?=\s|-|$)/i.exec(rest);
+        if(vm){vor=true;rest=rest.slice(vm[0].length);}
+        rest.replace(/^[\s\-–—:]+/,'').split('/').forEach(function(p){
+          var t=p.trim().replace(/\s+/g,' ').toUpperCase();
+          if(t&&issues.indexOf(t)<0)issues.push(t);
+        });
+      }
       if(!out.data[loc])out.data[loc]={};
       if(!out.data[loc][type])out.data[loc][type]=[];
       var arr=out.data[loc][type],rec={id:uid(),plate:m[1],st:st,vor:vor,issues:issues};
@@ -437,7 +455,7 @@
       var issue='';
       if(S.mode==='wmd'&&e.st==='bad'){issue=[e.vor?'VOR':null].concat(e.issues||[]).filter(Boolean).join(' / ');}
       return '<li><button type="button" class="row'+(e.id===cur.editId?' editing':'')+(e.id===lastAdded?' flash':'')+'" data-edit="'+esc(e.id)+'">'+
-        '<span class="pt">'+esc(e.plate)+'<small>MID</small></span>'+right+(issue?'<span class="it">'+esc(issue)+'</span>':'')+'</button></li>';
+        '<span class="pt">'+esc(e.plate)+'<small>MID</small></span>'+right+(issue?'<span class="it">'+esc(issue)+'</span>':'')+(S.mode==='loc'&&(e.issues||[]).length?'<span class="nt">'+esc(e.issues.join(' / '))+'</span>':'')+'</button></li>';
     }).join('');
     if(lastAdded){list.scrollTop=list.scrollHeight;lastAdded=null;}
   }
@@ -451,13 +469,16 @@
     $('statusBtns').hidden=!wmd;
     document.querySelectorAll('[data-st]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.st===cur.st))});
     var vb=$('vorBtn');vb.hidden=wmd;vb.setAttribute('aria-pressed',String(cur.vor));
-    var showIssues=wmd&&cur.st==='bad';
+    /* Locations reuse the WMD issue chips and pane, as comments. */
+    var showIssues=!wmd||cur.st==='bad';
     var ir=$('issuesRow');ir.hidden=!showIssues;
     if(showIssues){
-      ir.innerHTML='<button type="button" class="chip vor" data-act="vor" aria-pressed="'+cur.vor+'">VOR</button>'+
+      ir.innerHTML=(wmd?'<button type="button" class="chip vor" data-act="vor" aria-pressed="'+cur.vor+'">VOR</button>':'')+
         cur.issues.map(function(t,i){return '<button type="button" class="chip issue" data-rm="'+i+'">'+esc(t)+' <span aria-hidden="true">×</span></button>'}).join('')+
-        '<button type="button" class="chip add" data-act="addissue">+ Add issue</button>';
+        '<button type="button" class="chip add" data-act="addissue">+ Add '+(wmd?'issue':'comment')+'</button>';
     }
+    $('issueInput').placeholder=wmd?'Type the issue, e.g. MISSING FE':'Type a comment, e.g. AT WORKSHOP';
+    $('issueInput').setAttribute('aria-label',wmd?'Issue':'Comment');
     $('editBar').hidden=!cur.editId;
     var pane=paneOpen&&showIssues;
     $('pad').hidden=pane;
@@ -467,7 +488,7 @@
     if(pane)renderSugg();
   }
   function renderSugg(){
-    var all=DEFAULT_ISSUES.concat(S.mem.filter(function(m){return DEFAULT_ISSUES.indexOf(m)<0}));
+    var all=S.mode==='loc'?S.memLoc:DEFAULT_ISSUES.concat(S.mem.filter(function(m){return DEFAULT_ISSUES.indexOf(m)<0}));
     $('sugg').innerHTML=all.filter(function(t){return cur.issues.indexOf(t)<0}).map(function(t){
       return '<button type="button" class="chip" data-sg="'+esc(t)+'">'+esc(t)+'</button>';
     }).join('');
@@ -504,7 +525,7 @@
     var dup=b.filter(function(e){return e.plate===cur.plate&&e.id!==cur.editId})[0];
     if(dup){toast(cur.plate+' is already in this list');startEdit(dup.id);return;}
     var wmd=S.mode==='wmd';
-    var rec={plate:cur.plate,st:wmd?cur.st:'ok',vor:wmd?(cur.st==='bad'&&cur.vor):cur.vor,issues:(wmd&&cur.st==='bad')?cur.issues.slice():[]};
+    var rec={plate:cur.plate,st:wmd?cur.st:'ok',vor:wmd?(cur.st==='bad'&&cur.vor):cur.vor,issues:(!wmd||cur.st==='bad')?cur.issues.slice():[]};
     if(cur.editId){
       var i=b.findIndex(function(e){return e.id===cur.editId});
       if(i>-1){rec.id=cur.editId;b[i]=rec;}
@@ -531,12 +552,13 @@
       added=true;
       if(t==='VOR'){cur.vor=true;return;}
       if(cur.issues.indexOf(t)<0)cur.issues.push(t);
-      if(DEFAULT_ISSUES.indexOf(t)<0&&S.mem.indexOf(t)<0){S.mem.unshift(t);S.mem=S.mem.slice(0,20);}
+      if(S.mode==='loc'){if(S.memLoc.indexOf(t)<0){S.memLoc.unshift(t);S.memLoc=S.memLoc.slice(0,20);}}
+      else if(DEFAULT_ISSUES.indexOf(t)<0&&S.mem.indexOf(t)<0){S.mem.unshift(t);S.mem=S.mem.slice(0,20);}
     });
     if(added)save();
     return added;
   }
-  function setMode(m){if(S.mode===m)return;S.mode=m;if(cur.editId)resetCur();save();renderAll();}
+  function setMode(m){if(S.mode===m)return;S.mode=m;if(cur.editId)resetCur();else{cur.issues=[];paneOpen=false;}save();renderAll();}
   function setPlace(k,v){
     if(S[k]===v)return;S[k]=v;
     if(cur.editId)resetCur();
@@ -628,6 +650,15 @@
   $('issueInput').addEventListener('keydown',function(e){
     if(e.key==='Enter'){e.preventDefault();if(addIssue(this.value)){this.value='';renderDock();this.focus();}}
   });
+  /* Catches the day changing while the app stays open. */
+  function checkDay(){
+    if(today()===S.day)return;
+    date=today();resetCur();
+    if(dailyReset())toast('New day: lists cleared');
+    renderAll();
+  }
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)checkDay();});
+  setInterval(checkDay,60000);
   $('impText').addEventListener('input',updateImport);
   $('dateInput').addEventListener('change',function(){
     if(this.value){date=this.value;renderAll();}
